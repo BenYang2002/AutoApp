@@ -33,9 +33,14 @@ export async function navigateThroughJobs(page: Page) {
         console.log("No 'About the job' section, skipping");
         continue;
       }
-
-      const jd = aboutTitle.locator("xpath=../following-sibling::*[1]");
-      console.log(await jd.innerText());
+      const jd = aboutTitle.locator("xpath=../..");
+      const jdUrl = await page.url();
+      const jdId = new URL(jdUrl).searchParams.get("currentJobId") ?? "";
+      console.log(jdId);
+      const moreButton = jd.locator('[data-testid="expandable-text-button"]');
+      if ((await moreButton.count()) > 0) {
+        await moreButton.first().dispatchEvent("click");
+      }
       await page.waitForTimeout(1000); // Wait for 1 second before proceeding to the next job
     }
     let nextButton = page.locator(
