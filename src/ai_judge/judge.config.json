@@ -1,0 +1,8 @@
+{
+  "provider": "anthropic",
+  "model": "claude-opus-4-8",
+  "maxTokens": 1024,
+  "thinking": true,
+  "systemPromptFile": "src/ai_judge/prompts/system.txt",
+  "requirementsFile": "requirements.json"
+}

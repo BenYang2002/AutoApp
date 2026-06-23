@@ -1,0 +1,74 @@
+{
+  "hardReject": {
+    "citizenshipRequired": true,
+    "minimumYearsExperience": 3,
+
+    "seniorTitles": [
+      "Senior",
+      "Staff",
+      "Principal",
+      "Lead",
+      "Architect",
+      "Manager",
+      "Director"
+    ],
+
+    "unrelatedRoles": [
+      "Data Analyst",
+      "Business Analyst",
+      "Financial Analyst",
+      "Accountant",
+      "Sales Engineer",
+      "Marketing",
+      "Recruiter",
+      "HR",
+      "Product Marketing",
+      "UX Researcher",
+      "Graphic Designer",
+      "Mechanical Engineer",
+      "Electrical Engineer",
+      "Civil Engineer"
+    ]
+  },
+
+  "softNegative": {
+    "roleTypes": [
+      "QA Engineer",
+      "Test Engineer",
+      "Automation Test Engineer",
+      "SDET",
+      "Support Engineer",
+      "Technical Support Engineer",
+      "Implementation Engineer",
+      "IT Administrator",
+      "System Administrator",
+      "Network Administrator"
+    ]
+  },
+
+  "strongPositive": {
+    "roleTypes": [
+      "Software Engineer",
+      "Software Developer",
+      "Full Stack Engineer",
+      "Full Stack Developer",
+      "Backend Engineer",
+      "Backend Developer",
+      "Frontend Engineer",
+      "Frontend Developer",
+      "Java Developer",
+      "Application Engineer",
+      "AI Engineer",
+      "Machine Learning Engineer",
+      "Platform Engineer",
+      "Cloud Engineer"
+    ]
+  },
+
+  "preferences": {
+    "entryLevel": true,
+    "newGrad": true,
+    "junior": true,
+    "relocation": true
+  }
+}

@@ -1,4 +1,7 @@
 import type { Page } from "playwright";
+import { judgeJD } from "../ai_judge/index.js";
+import { scrapeJobDetail } from "./Linkedin-jd.js";
+import { saveJD, saveAIResult } from "../storage/linkedin.js";
 
 export async function navigateThroughJobs(page: Page) {
   while (true) {
@@ -8,48 +11,34 @@ export async function navigateThroughJobs(page: Page) {
     const jobButtons = lazyColumn.locator(
       'div[role="button"][componentkey^="job-card-component-ref-"]',
     );
-    // Wait until at least one card is in the DOM before proceeding
     await jobButtons.first().waitFor({ state: "visible" });
     const jobCount = await jobButtons.count();
     console.log(`Found ${jobCount} jobs on this page`);
+
     for (let i = 0; i < jobCount; i++) {
       console.log(`Clicking job ${i + 1} of ${jobCount}`);
-      const job = jobButtons.nth(i);
-      const text = await job.innerText();
-      const oldUrl = page.url();
-      await job.click();
-      await page
-        .waitForURL((url) => url.toString() !== oldUrl, { timeout: 5000 })
-        .catch(() => {});
-
-      const aboutTitle = page.getByText("About the job", { exact: true });
-
-      const appeared = await aboutTitle
-        .waitFor({ state: "attached", timeout: 10000 })
-        .then(() => true)
-        .catch(() => false);
-
-      if (!appeared) {
+      const detail = await scrapeJobDetail(page, jobButtons.nth(i));
+      if (!detail) {
         console.log("No 'About the job' section, skipping");
         continue;
       }
-      const jd = aboutTitle.locator("xpath=../..");
-      const jdUrl = await page.url();
-      const jdId = new URL(jdUrl).searchParams.get("currentJobId") ?? "";
-      console.log(jdId);
-      const moreButton = jd.locator('[data-testid="expandable-text-button"]');
-      if ((await moreButton.count()) > 0) {
-        await moreButton.first().dispatchEvent("click");
-      }
-      await page.waitForTimeout(1000); // Wait for 1 second before proceeding to the next job
+
+      const { jdId, jdMarkdown } = detail;
+      const result = await judgeJD(jdId, jdMarkdown);
+      console.log(JSON.stringify(result, null, 2));
+
+      saveJD(jdId, jdMarkdown);
+      saveAIResult(jdId, result);
+      console.log(`Saved JD ${jdId}`);
+
+      await page.waitForTimeout(1000);
     }
-    let nextButton = page.locator(
+
+    const nextButton = page.locator(
       '[data-testid="pagination-controls-next-button-visible"]',
     );
     console.log(`Next button count: ${await nextButton.count()}`);
-    if ((await nextButton.count()) === 0) {
-      break;
-    }
+    if ((await nextButton.count()) === 0) break;
     await nextButton.click();
     console.log("Navigated to the next page of jobs");
   }
