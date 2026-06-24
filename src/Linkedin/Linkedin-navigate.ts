@@ -1,7 +1,7 @@
 import type { Page } from "playwright";
 import { judgeJD } from "../ai_judge/index.js";
 import { scrapeJobDetail } from "./Linkedin-jd.js";
-import { saveJD, saveAIResult } from "../storage/linkedin.js";
+import { saveJDToDB, saveAIResultToDB } from "../db/linkedin.js";
 
 export async function navigateThroughJobs(page: Page) {
   while (true) {
@@ -27,8 +27,8 @@ export async function navigateThroughJobs(page: Page) {
       const result = await judgeJD(jdId, jdMarkdown);
       console.log(JSON.stringify(result, null, 2));
 
-      saveJD(jdId, jdMarkdown);
-      saveAIResult(jdId, result);
+      await saveJDToDB(jdId, jdMarkdown);
+      await saveAIResultToDB(result);
       console.log(`Saved JD ${jdId}`);
 
       await page.waitForTimeout(1000);

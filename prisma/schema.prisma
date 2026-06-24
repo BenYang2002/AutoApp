@@ -1,0 +1,39 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model JobListing {
+  jobId      String        @id @map("job_id")
+  markdown   String
+  scrapedAt  DateTime      @default(now()) @map("scraped_at")
+  evaluation AiEvaluation?
+
+  @@map("job_listings")
+}
+
+model AiEvaluation {
+  jobId                  String     @id @map("job_id")
+  decision               String
+  score                  Decimal    @db.Decimal(5, 2)
+  reason                 String
+  citizenshipRequired    Boolean    @default(false) @map("citizenship_required")
+  greenCardAccepted      Boolean    @default(false) @map("green_card_accepted")
+  seniorRole             Boolean    @default(false) @map("senior_role")
+  yearsTooHigh           Boolean    @default(false) @map("years_too_high")
+  currentStudentRequired Boolean    @default(false) @map("current_student_required")
+  unrelatedRole          Boolean    @default(false) @map("unrelated_role")
+  softNegativeRole       Boolean    @default(false) @map("soft_negative_role")
+  matchedSkills          String[]   @map("matched_skills")
+  missingSkills          String[]   @map("missing_skills")
+  evaluatedAt            DateTime   @map("evaluated_at")
+  createdAt              DateTime   @default(now()) @map("created_at")
+
+  jobListing             JobListing @relation(fields: [jobId], references: [jobId])
+
+  @@map("ai_evaluations")
+}
