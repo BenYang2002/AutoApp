@@ -1,0 +1,9 @@
+{
+  "provider": "anthropic",
+  "model": "claude-sonnet-4-6",
+  "maxTokens": 2048,
+  "maxPages": 10,
+  "systemPromptFile": "src/ai_autofill/prompts/system.txt",
+  "revisePromptFile": "src/ai_autofill/prompts/revise.txt",
+  "candidateFile": "candidate.json"
+}

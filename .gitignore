@@ -1,3 +1,15 @@
 node_modules/
 .env
 .claude/
+
+# Personal info & credentials
+candidate.json
+resume.md
+*.pdf
+
+# AI prompts
+src/ai_autofill/prompts/
+src/ai_judge/prompts/
+
+# Debug output
+debug_fields/

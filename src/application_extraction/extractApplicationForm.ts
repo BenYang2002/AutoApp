@@ -11,6 +11,7 @@ import type { ExtractedApplicationField } from "./types.js";
 import { extractAccessibilityFields } from "./extractAccessibilityTree.js";
 import { extractDomCandidates } from "./extractDomCandidates.js";
 import { mergeExtractedFields } from "./mergeExtractedFields.js";
+import { enrichComboboxOptions } from "./enrichComboboxOptions.js";
 
 export type { ExtractedApplicationField } from "./types.js";
 
@@ -23,6 +24,11 @@ export async function extractApplicationForm(
     extractDomCandidates(page),
   ]);
 
-  // Merge, deduplicate, and clean up
-  return mergeExtractedFields(a11yFields, domCandidates);
+  const fields = mergeExtractedFields(a11yFields, domCandidates);
+
+  // Open each combobox to collect its live options and classify it as
+  // finite_select or search_select before handing off to the AI planner.
+  await enrichComboboxOptions(page, fields);
+
+  return fields;
 }

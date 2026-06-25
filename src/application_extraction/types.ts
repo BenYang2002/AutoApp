@@ -12,6 +12,10 @@ export type ExtractedApplicationField = {
   required?: boolean;
   // Populated for combobox / listbox / radio groups
   options?: string[];
+  // "finite_select" = small fixed option list (GPA, gender, etc.) — value must come from options[].
+  // "search_select" = large searchable dropdown (school, city, etc.) — type to filter, then pick closest match.
+  // Absent for non-combobox fields.
+  selectKind?: "finite_select" | "search_select";
   placeholder?: string;
   // Current value if the field is pre-filled
   value?: string;

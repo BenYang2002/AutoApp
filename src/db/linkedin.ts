@@ -1,6 +1,19 @@
 import { prisma } from "./client.js";
 import type { JudgeResult } from "../ai_judge/index.js";
 
+export async function hasAppliedToJob(jobId: string): Promise<boolean> {
+  const record = await prisma.appliedJob.findUnique({ where: { jobId } });
+  return record !== null;
+}
+
+export async function recordAppliedJob(jobId: string): Promise<void> {
+  await prisma.appliedJob.upsert({
+    where: { jobId },
+    create: { jobId },
+    update: {},
+  });
+}
+
 export async function saveJDToDB(jdId: string, markdown: string): Promise<void> {
   await prisma.jobListing.upsert({
     where: { jobId: jdId },

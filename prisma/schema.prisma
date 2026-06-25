@@ -16,6 +16,13 @@ model JobListing {
   @@map("job_listings")
 }
 
+model AppliedJob {
+  jobId     String   @id @map("job_id")
+  appliedAt DateTime @default(now()) @map("applied_at")
+
+  @@map("applied_jobs")
+}
+
 model AiEvaluation {
   jobId                  String     @id @map("job_id")
   decision               String
