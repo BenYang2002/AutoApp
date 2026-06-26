@@ -5,6 +5,7 @@ import TurndownService from "turndown";
 import type { AutofillConfig, AutofillAdapter, CheckStatusConfig } from "./types.js";
 import { extractApplicationForm } from "../application_extraction/extractApplicationForm.js";
 import { executeAutofill } from "./filler.js";
+import { getVerificationCode } from "../email_verification/index.js";
 
 const DEBUG_DIR = join(process.cwd(), "debug_fields");
 
@@ -56,12 +57,13 @@ export async function runAutofillSession(
     }
 
     const pageMarkdown = await extractPageMarkdown(page);
-    const fields = await extractApplicationForm(page);
+    let fields = await extractApplicationForm(page);
 
     console.log(`[autofill] Planning ${fields.length} fields...`);
     const instructions = await adapter.plan(fields, pageMarkdown, config);
     console.log(`[autofill] Got ${instructions.length} instructions`);
 
+    const executeStartTime = new Date();
     let failed = await executeAutofill(page, fields, instructions);
 
     // Wait for any navigation triggered by actions before checking status
@@ -79,6 +81,24 @@ export async function runAutofillSession(
       return "success";
     } else if (pageStatus === "continue") {
       stuckCount = 0;
+    } else if (pageStatus === "verification") {
+      console.log("[autofill] Verification code required — fetching from Gmail...");
+      const { status, code } = await getVerificationCode(executeStartTime);
+      if (!status) {
+        console.warn("[autofill] Could not retrieve verification code — failing application");
+        return "failed";
+      }
+      fields = await extractApplicationForm(page);
+      const verifyInstructions = await adapter.planVerification(fields, code, postFillMarkdown, config);
+      if (verifyInstructions.length > 0) {
+        await writeFile(
+          join(DEBUG_DIR, `page${pageNum}_${jdId}_verification.json`),
+          JSON.stringify(verifyInstructions, null, 2),
+          "utf-8",
+        );
+        failed = await executeAutofill(page, fields, verifyInstructions);
+      }
+      stuckCount = 0;
     } else {
       // error — still on same page, try to revise
       stuckCount++;
@@ -91,6 +111,7 @@ export async function runAutofillSession(
         return "stuck";
       }
 
+      fields = await extractApplicationForm(page);
       const revised = await adapter.revise(
         failed,
         fields,

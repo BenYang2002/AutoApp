@@ -5,6 +5,10 @@ import type { ModelAdapter, JudgeConfig, JudgeResult } from "../types.js";
 
 const client = new Anthropic();
 
+function stripFences(text: string): string {
+  return text.replace(/^```[\w]*\n?/m, "").replace(/```\s*$/m, "").trim();
+}
+
 export const anthropicAdapter: ModelAdapter = {
   async judge(
     jd: string,
@@ -35,6 +39,6 @@ export const anthropicAdapter: ModelAdapter = {
       response.content.find((b): b is Anthropic.TextBlock => b.type === "text")
         ?.text ?? "";
 
-    return JSON.parse(text) as Omit<JudgeResult, "jobId" | "evaluatedAt">;
+    return JSON.parse(stripFences(text)) as Omit<JudgeResult, "jobId" | "evaluatedAt">;
   },
 };

@@ -5,5 +5,6 @@
   "maxPages": 10,
   "systemPromptFile": "src/ai_autofill/prompts/system.txt",
   "revisePromptFile": "src/ai_autofill/prompts/revise.txt",
+  "verificationPromptFile": "src/ai_autofill/prompts/verification.txt",
   "candidateFile": "candidate.json"
 }

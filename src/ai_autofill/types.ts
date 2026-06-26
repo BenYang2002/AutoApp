@@ -3,6 +3,7 @@ import type { ExtractedApplicationField } from "../application_extraction/types.
 export type FillAction =
   | "fill"
   | "type"
+  | "pressSequentially"
   | "combobox"
   | "typeAndSelect"
   | "select"
@@ -28,6 +29,7 @@ export interface AutofillConfig {
   maxPages: number;
   systemPromptFile: string;
   revisePromptFile: string;
+  verificationPromptFile: string;
   candidateFile: string;
 }
 
@@ -56,5 +58,12 @@ export interface AutofillAdapter {
     prevMarkdown: string,
     currentMarkdown: string,
     config: CheckStatusConfig,
-  ): Promise<"success" | "continue" | "error">;
+  ): Promise<"success" | "continue" | "error" | "verification">;
+
+  planVerification(
+    fields: ExtractedApplicationField[],
+    code: string,
+    pageMarkdown: string,
+    config: AutofillConfig,
+  ): Promise<FillInstruction[]>;
 }

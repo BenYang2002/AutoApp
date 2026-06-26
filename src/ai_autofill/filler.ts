@@ -135,6 +135,11 @@ export async function executeAutofill(
           await locator.type(value, { delay: 60 });
           break;
 
+        case "pressSequentially":
+          await locator.click();
+          await locator.pressSequentially(value, { delay: 40 });
+          break;
+
         case "combobox":
         case "typeAndSelect":
           // search_select: type to filter, click closest match
