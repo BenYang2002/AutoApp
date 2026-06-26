@@ -31,6 +31,13 @@ export interface AutofillConfig {
   candidateFile: string;
 }
 
+export interface CheckStatusConfig {
+  provider: string;
+  model: string;
+  maxTokens: number;
+  promptFile: string;
+}
+
 export interface AutofillAdapter {
   plan(
     fields: ExtractedApplicationField[],
@@ -44,4 +51,10 @@ export interface AutofillAdapter {
     errorMarkdown: string,
     config: AutofillConfig,
   ): Promise<FillInstruction[]>;
+
+  checkPageStatus(
+    prevMarkdown: string,
+    currentMarkdown: string,
+    config: CheckStatusConfig,
+  ): Promise<"success" | "continue" | "error">;
 }

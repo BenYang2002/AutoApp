@@ -31,9 +31,13 @@ async function resolveLocator(
     try {
       let locator: Locator;
       if (candidate.startsWith("getByRole(")) {
-        const m = /getByRole\('(\w+)',\s*\{\s*name:\s*"([^"]+)"/.exec(candidate);
+        const m = /getByRole\('(\w+)',\s*\{\s*name:\s*"([^"]+)"/.exec(
+          candidate,
+        );
         if (!m?.[1] || !m[2]) continue;
-        locator = page.getByRole(m[1] as Parameters<Page["getByRole"]>[0], { name: m[2] });
+        locator = page.getByRole(m[1] as Parameters<Page["getByRole"]>[0], {
+          name: m[2],
+        });
       } else if (candidate.startsWith("getByLabel(")) {
         const m = /getByLabel\("([^"]+)"\)/.exec(candidate);
         if (!m?.[1]) continue;
@@ -82,9 +86,9 @@ export async function enrichComboboxOptions(
         const texts = await optionEls.allTextContents();
         field.options = texts.map((t) => t.trim()).filter(Boolean);
         field.selectKind = "finite_select";
-        console.log(
+        /*console.log(
           `[extract] finite_select "${field.label}": [${field.options.join(", ")}]`,
-        );
+        );*/
       } else {
         // 0 options = search_select; > MAX = effectively search_select
         field.selectKind = "search_select";

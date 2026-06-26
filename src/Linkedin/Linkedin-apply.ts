@@ -1,6 +1,10 @@
 import type { Page } from "playwright";
 import type { JudgeResult } from "../ai_judge/index.js";
-import { saveJDToDB, saveAIResultToDB, recordAppliedJob } from "../db/linkedin.js";
+import {
+  saveJDToDB,
+  saveAIResultToDB,
+  recordAppliedJob,
+} from "../db/linkedin.js";
 import { autofillApplication } from "../ai_autofill/index.js";
 
 async function resolveApplicationPage(

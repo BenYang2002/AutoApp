@@ -1,7 +1,7 @@
 import { join } from "path";
 import { readFileSync } from "fs";
 import type { Page } from "playwright";
-import type { AutofillConfig, AutofillAdapter } from "./types.js";
+import type { AutofillConfig, AutofillAdapter, CheckStatusConfig } from "./types.js";
 import { runAutofillSession } from "./runner.js";
 
 export type { FillInstruction, FailedInstruction } from "./types.js";
@@ -10,6 +10,12 @@ function loadConfig(): AutofillConfig {
   return JSON.parse(
     readFileSync(join(process.cwd(), "src/ai_autofill/autofill.config.json"), "utf-8"),
   ) as AutofillConfig;
+}
+
+function loadCheckStatusConfig(): CheckStatusConfig {
+  return JSON.parse(
+    readFileSync(join(process.cwd(), "src/ai_autofill/check_status.config.json"), "utf-8"),
+  ) as CheckStatusConfig;
 }
 
 async function loadAdapter(provider: string): Promise<AutofillAdapter> {
@@ -28,6 +34,7 @@ export async function autofillApplication(
   jdId: string,
 ): Promise<"success" | "stuck" | "failed"> {
   const config = loadConfig();
+  const checkStatusConfig = loadCheckStatusConfig();
   const adapter = await loadAdapter(config.provider);
-  return runAutofillSession(page, jdId, config, adapter);
+  return runAutofillSession(page, jdId, config, checkStatusConfig, adapter);
 }

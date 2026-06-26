@@ -1,26 +1,22 @@
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
-import { readFileSync } from "fs";
 import type { Page } from "playwright";
 import TurndownService from "turndown";
-import type {
-  AutofillConfig,
-  AutofillAdapter,
-} from "./types.js";
+import type { AutofillConfig, AutofillAdapter, CheckStatusConfig } from "./types.js";
 import { extractApplicationForm } from "../application_extraction/extractApplicationForm.js";
 import { executeAutofill } from "./filler.js";
 
 const DEBUG_DIR = join(process.cwd(), "debug_fields");
 
-const turndown = new TurndownService({ headingStyle: "atx", codeBlockStyle: "fenced" });
+const turndown = new TurndownService({
+  headingStyle: "atx",
+  codeBlockStyle: "fenced",
+});
 
 async function extractPageMarkdown(page: Page): Promise<string> {
   const html = await page.locator("body").innerHTML();
   return turndown.turndown(html);
 }
-
-const LOGIN_WALL_RE =
-  /\b(sign in to apply|log in to apply|create an account to apply|register to apply|login required|please sign in|please log in|you must be (signed|logged) in)\b/i;
 
 async function detectSuccess(page: Page): Promise<boolean> {
   try {
@@ -35,23 +31,11 @@ async function detectSuccess(page: Page): Promise<boolean> {
   }
 }
 
-async function detectValidationErrors(page: Page): Promise<boolean> {
-  try {
-    const invalid = await page.locator('[aria-invalid="true"]').count();
-    if (invalid > 0) return true;
-    const alerts = await page
-      .locator('[role="alert"]:visible, .error:visible, .field-error:visible')
-      .count();
-    return alerts > 0;
-  } catch {
-    return false;
-  }
-}
-
 export async function runAutofillSession(
   page: Page,
   jdId: string,
   config: AutofillConfig,
+  checkStatusConfig: CheckStatusConfig,
   adapter: AutofillAdapter,
 ): Promise<"success" | "stuck" | "failed"> {
   await mkdir(DEBUG_DIR, { recursive: true });
@@ -61,7 +45,6 @@ export async function runAutofillSession(
   for (let pageNum = 1; pageNum <= config.maxPages; pageNum++) {
     console.log(`\n[autofill] ── Page ${pageNum} ──`);
 
-    // Wait for the page to settle before extracting
     await page
       .waitForLoadState("domcontentloaded", { timeout: 10000 })
       .catch(() => {});
@@ -73,38 +56,34 @@ export async function runAutofillSession(
     }
 
     const pageMarkdown = await extractPageMarkdown(page);
-
-    if (LOGIN_WALL_RE.test(pageMarkdown)) {
-      console.log("[autofill] Login/register wall detected — skipping application");
-      return "failed";
-    }
-
-    await writeFile(
-      join(DEBUG_DIR, `page${pageNum}_${jdId}_page.md`),
-      pageMarkdown,
-      "utf-8",
-    );
-
     const fields = await extractApplicationForm(page);
 
     console.log(`[autofill] Planning ${fields.length} fields...`);
-    let instructions = await adapter.plan(fields, pageMarkdown, config);
+    const instructions = await adapter.plan(fields, pageMarkdown, config);
     console.log(`[autofill] Got ${instructions.length} instructions`);
 
-    await writeFile(
-      join(DEBUG_DIR, `page${pageNum}_${jdId}_instructions.json`),
-      JSON.stringify(instructions, null, 2),
-      "utf-8",
-    );
-
-    // Execute instructions
     let failed = await executeAutofill(page, fields, instructions);
 
-    // Error recovery: if fields failed and the page shows validation errors, ask AI to revise
-    if (failed.length > 0 && (await detectValidationErrors(page))) {
+    // Wait for any navigation triggered by actions before checking status
+    await page
+      .waitForLoadState("domcontentloaded", { timeout: 8000 })
+      .catch(() => {});
+    await page.waitForTimeout(800);
+
+    const postFillMarkdown = await extractPageMarkdown(page);
+    const pageStatus = await adapter.checkPageStatus(pageMarkdown, postFillMarkdown, checkStatusConfig);
+    console.log(`[autofill] Page status: ${pageStatus}`);
+
+    if (pageStatus === "success") {
+      console.log("[autofill] Application submitted successfully!");
+      return "success";
+    } else if (pageStatus === "continue") {
+      stuckCount = 0;
+    } else {
+      // error — still on same page, try to revise
       stuckCount++;
       console.log(
-        `[autofill] ${failed.length} failed + validation errors — asking AI to revise (stuck=${stuckCount})`,
+        `[autofill] Still on same page with errors (stuck=${stuckCount})`,
       );
 
       if (stuckCount >= 2) {
@@ -112,11 +91,10 @@ export async function runAutofillSession(
         return "stuck";
       }
 
-      const errorMarkdown = await extractPageMarkdown(page);
       const revised = await adapter.revise(
         failed,
         fields,
-        errorMarkdown,
+        postFillMarkdown,
         config,
       );
 
@@ -127,30 +105,37 @@ export async function runAutofillSession(
           "utf-8",
         );
         failed = await executeAutofill(page, fields, revised);
+
+        await page
+          .waitForLoadState("domcontentloaded", { timeout: 8000 })
+          .catch(() => {});
+        await page.waitForTimeout(800);
       }
-    } else {
-      stuckCount = 0;
+
+      const postReviseMarkdown = await extractPageMarkdown(page);
+      const reviseStatus = await adapter.checkPageStatus(
+        postFillMarkdown,
+        postReviseMarkdown,
+        checkStatusConfig,
+      );
+      console.log(`[autofill] Post-revise status: ${reviseStatus}`);
+
+      if (reviseStatus === "success") {
+        console.log("[autofill] Application submitted after revise!");
+        return "success";
+      } else if (reviseStatus === "continue") {
+        stuckCount = 0;
+      }
+      // if still error, fall through — stuckCount stays incremented for next iteration
     }
 
     if (failed.length > 0) {
       console.warn(
-        `[autofill] ${failed.length} instruction(s) still failing after retry:`,
+        `[autofill] ${failed.length} instruction(s) still failing:`,
       );
       failed.forEach((f) =>
         console.warn(`  • ${f.instruction.key}: ${f.reason}`),
       );
-    }
-
-    // Wait for any navigation triggered by the "click" action
-    await page
-      .waitForLoadState("domcontentloaded", { timeout: 8000 })
-      .catch(() => {});
-    await page.waitForTimeout(800);
-
-    // Check success after the click
-    if (await detectSuccess(page)) {
-      console.log("[autofill] Application submitted successfully!");
-      return "success";
     }
   }
 

@@ -6,7 +6,7 @@ export async function navigateToJobs(page: Page) {
     .locator('input[data-testid="typeahead-input"]')
     .first();
   await searchBox.click();
-  await searchBox.pressSequentially("Software Engineer, Entry Level", {
+  await searchBox.pressSequentially("Fullstack Engineer, Entry Level", {
     delay: 50,
   });
   await searchBox.press("Enter");

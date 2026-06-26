@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import Anthropic from "@anthropic-ai/sdk";
-import type { AutofillAdapter, AutofillConfig, FillInstruction, FailedInstruction } from "../types.js";
+import type { AutofillAdapter, AutofillConfig, CheckStatusConfig, FillInstruction, FailedInstruction } from "../types.js";
 import type { ExtractedApplicationField } from "../../application_extraction/types.js";
 
 const client = new Anthropic();
@@ -88,5 +88,40 @@ export const anthropicAdapter: AutofillAdapter = {
       const text = response.content.find((b): b is Anthropic.TextBlock => b.type === "text")?.text ?? "[]";
       return JSON.parse(stripFences(text)) as FillInstruction[];
     });
+  },
+
+  async checkPageStatus(
+    prevMarkdown: string,
+    currentMarkdown: string,
+    config: CheckStatusConfig,
+  ): Promise<"success" | "continue" | "error"> {
+    const systemPrompt = readFileSync(
+      join(process.cwd(), config.promptFile),
+      "utf-8",
+    );
+
+    const textPayload = [
+      `PREVIOUS PAGE (before filling):\n${prevMarkdown}`,
+      `CURRENT PAGE (after filling):\n${currentMarkdown}`,
+    ].join("\n\n---\n\n");
+
+    const response = await client.messages.create({
+      model: config.model,
+      max_tokens: 10,
+      system: systemPrompt,
+      messages: [{ role: "user", content: textPayload }],
+    });
+
+    const text =
+      response.content
+        .find((b): b is Anthropic.TextBlock => b.type === "text")
+        ?.text.trim()
+        .toLowerCase() ?? "error";
+
+    if (text === "success" || text === "continue" || text === "error") {
+      return text;
+    }
+    console.warn(`[anthropic] Unexpected checkPageStatus response: "${text}", defaulting to error`);
+    return "error";
   },
 };
