@@ -6,40 +6,69 @@ import {
   recordAppliedJob,
 } from "../db/linkedin.js";
 import { autofillApplication } from "../ai_autofill/index.js";
+import { extractEasyApplyForm, MODAL_SELECTOR } from "./extractEasyApplyForm.js";
 
 async function resolveApplicationPage(
   page: Page,
-): Promise<{ appPage: Page; isNewTab: boolean } | null> {
-  const preClickUrl = page.url();
-
-  const applyButton = page.locator(
-    '#jobs-apply-button-id, a[aria-label="Apply on company website"]',
+): Promise<{ appPage: Page; isNewTab: boolean; isEasyApply: boolean } | null> {
+  const easyApplyBtn = page.locator(
+    '[aria-label^="Easy Apply"], [aria-label="Easy Apply to this job"]',
   );
-  if ((await applyButton.count()) === 0) {
-    console.log("No 'Apply' button, skipping");
+  const companyApplyBtn = page.locator('[aria-label*="on company website"]');
+
+  const easyCount = await easyApplyBtn.count();
+  for (let i = 0; i < easyCount; i++) {
+    console.log(
+      `[debug] easyApplyBtn[${i}]:`,
+      await easyApplyBtn.nth(i).evaluate((el) => el.outerHTML),
+    );
+  }
+
+  if (easyCount > 0) {
+    console.log("[apply] Easy Apply");
+    await easyApplyBtn.first().click();
+    await page.waitForTimeout(5000);
+    const modalAppeared = await page
+      .locator(
+        '.jobs-easy-apply-modal__content, [data-test-modal-id="easy-apply-modal"]',
+      )
+      .first()
+      .waitFor({ state: "attached", timeout: 8000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!modalAppeared) {
+      console.log("[apply] Easy Apply modal did not open, skipping");
+      return null;
+    }
+    return { appPage: page, isNewTab: false, isEasyApply: true };
+  }
+
+  if ((await companyApplyBtn.count()) === 0) {
+    console.log("No Apply button found, skipping");
     return null;
   }
 
+  console.log("[apply] Company website apply");
+  const preClickUrl = page.url();
   const newTabPromise = page
     .context()
     .waitForEvent("page", { timeout: 5000 })
     .catch(() => null);
 
-  await applyButton.first().click();
+  await companyApplyBtn.first().click();
 
   const newTab = await newTabPromise;
-
   if (newTab) {
     await newTab.waitForLoadState("domcontentloaded");
-    console.log(`Application page (new tab): ${newTab.url()}`);
-    return { appPage: newTab, isNewTab: true };
+    console.log(`[apply] Application page (new tab): ${newTab.url()}`);
+    return { appPage: newTab, isNewTab: true, isEasyApply: false };
   }
 
   await page
     .waitForURL((url) => url.toString() !== preClickUrl, { timeout: 10000 })
-    .catch(() => console.log("URL did not change — may be an in-page modal"));
-  console.log(`Application page: ${page.url()}`);
-  return { appPage: page, isNewTab: false };
+    .catch(() => console.log("[apply] URL did not change"));
+  console.log(`[apply] Application page: ${page.url()}`);
+  return { appPage: page, isNewTab: false, isEasyApply: false };
 }
 
 export async function applyToJob(
@@ -51,12 +80,17 @@ export async function applyToJob(
   const resolved = await resolveApplicationPage(page);
   if (!resolved) return;
 
-  const { appPage, isNewTab } = resolved;
+  const { appPage, isNewTab, isEasyApply } = resolved;
 
   await saveJDToDB(jdId, jdMarkdown);
   await saveAIResultToDB(result);
 
-  const outcome = await autofillApplication(appPage, jdId);
+  const outcome = await autofillApplication(
+    appPage,
+    jdId,
+    isEasyApply ? extractEasyApplyForm : undefined,
+    isEasyApply ? MODAL_SELECTOR : "body",
+  );
   console.log(`[apply] JD ${jdId} — autofill outcome: ${outcome}`);
 
   if (outcome === "success") {
@@ -64,10 +98,10 @@ export async function applyToJob(
     console.log(`[apply] JD ${jdId} recorded as applied`);
   }
 
-  // Return to the LinkedIn jobs page so the navigator can continue
   if (isNewTab) {
     await appPage.close().catch(() => {});
-  } else if (outcome !== "success") {
+  } else if (!isEasyApply && outcome !== "success") {
     await page.goBack().catch(() => {});
   }
+  // Easy Apply: modal closes on its own
 }

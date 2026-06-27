@@ -16,7 +16,7 @@ import { enrichComboboxOptions } from "./enrichComboboxOptions.js";
 export type { ExtractedApplicationField } from "./types.js";
 
 export async function extractApplicationForm(
-  page: Page
+  page: Page,
 ): Promise<ExtractedApplicationField[]> {
   // Run both extractors in parallel — they are independent of each other
   const [a11yFields, domCandidates] = await Promise.all([

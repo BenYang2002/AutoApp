@@ -2,8 +2,13 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import type { Page } from "playwright";
 import TurndownService from "turndown";
-import type { AutofillConfig, AutofillAdapter, CheckStatusConfig } from "./types.js";
+import type {
+  AutofillConfig,
+  AutofillAdapter,
+  CheckStatusConfig,
+} from "./types.js";
 import { extractApplicationForm } from "../application_extraction/extractApplicationForm.js";
+import type { ExtractedApplicationField } from "../application_extraction/extractApplicationForm.js";
 import { executeAutofill } from "./filler.js";
 import { getVerificationCode } from "../email_verification/index.js";
 
@@ -14,9 +19,29 @@ const turndown = new TurndownService({
   codeBlockStyle: "fenced",
 });
 
-async function extractPageMarkdown(page: Page): Promise<string> {
-  const html = await page.locator("body").innerHTML();
+async function extractPageMarkdown(page: Page, scopeSelector = "body"): Promise<string> {
+  const html = await page.locator(scopeSelector).first().innerHTML();
   return turndown.turndown(html);
+}
+
+async function waitForContentChange(
+  page: Page,
+  prevHtml: string,
+  scopeSelector = "body",
+  timeout = 8000,
+): Promise<void> {
+  await Promise.race([
+    page.waitForLoadState("domcontentloaded", { timeout }),
+    page.waitForFunction(
+      ({ prev, sel }: { prev: string; sel: string }) => {
+        const el = document.querySelector(sel);
+        return el ? el.innerHTML !== prev : document.body.innerHTML !== prev;
+      },
+      { prev: prevHtml, sel: scopeSelector },
+      { timeout },
+    ),
+  ]).catch(() => {});
+  await page.waitForTimeout(300);
 }
 
 async function detectSuccess(page: Page): Promise<boolean> {
@@ -38,6 +63,10 @@ export async function runAutofillSession(
   config: AutofillConfig,
   checkStatusConfig: CheckStatusConfig,
   adapter: AutofillAdapter,
+  extractForm: (
+    page: Page,
+  ) => Promise<ExtractedApplicationField[]> = extractApplicationForm,
+  scopeSelector = "body",
 ): Promise<"success" | "stuck" | "failed"> {
   await mkdir(DEBUG_DIR, { recursive: true });
 
@@ -49,31 +78,40 @@ export async function runAutofillSession(
     await page
       .waitForLoadState("domcontentloaded", { timeout: 10000 })
       .catch(() => {});
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(300);
 
     if (await detectSuccess(page)) {
       console.log("[autofill] Application submitted successfully!");
       return "success";
     }
 
-    const pageMarkdown = await extractPageMarkdown(page);
-    let fields = await extractApplicationForm(page);
+    const pageMarkdown = await extractPageMarkdown(page, scopeSelector);
+    let fields = await extractForm(page);
 
     console.log(`[autofill] Planning ${fields.length} fields...`);
-    const instructions = await adapter.plan(fields, pageMarkdown, config);
+    let instructions: Awaited<ReturnType<typeof adapter.plan>>;
+    try {
+      instructions = await adapter.plan(fields, pageMarkdown, config);
+    } catch {
+      console.warn(
+        "[autofill] Failed to get valid instructions after retries, skipping application",
+      );
+      return "failed";
+    }
     console.log(`[autofill] Got ${instructions.length} instructions`);
 
     const executeStartTime = new Date();
+    const preExecHtml = await page.locator(scopeSelector).first().innerHTML();
     let failed = await executeAutofill(page, fields, instructions);
 
-    // Wait for any navigation triggered by actions before checking status
-    await page
-      .waitForLoadState("domcontentloaded", { timeout: 8000 })
-      .catch(() => {});
-    await page.waitForTimeout(800);
+    await waitForContentChange(page, preExecHtml, scopeSelector);
 
-    const postFillMarkdown = await extractPageMarkdown(page);
-    const pageStatus = await adapter.checkPageStatus(pageMarkdown, postFillMarkdown, checkStatusConfig);
+    const postFillMarkdown = await extractPageMarkdown(page, scopeSelector);
+    const pageStatus = await adapter.checkPageStatus(
+      pageMarkdown,
+      postFillMarkdown,
+      checkStatusConfig,
+    );
     console.log(`[autofill] Page status: ${pageStatus}`);
 
     if (pageStatus === "success") {
@@ -82,14 +120,23 @@ export async function runAutofillSession(
     } else if (pageStatus === "continue") {
       stuckCount = 0;
     } else if (pageStatus === "verification") {
-      console.log("[autofill] Verification code required — fetching from Gmail...");
+      console.log(
+        "[autofill] Verification code required — fetching from Gmail...",
+      );
       const { status, code } = await getVerificationCode(executeStartTime);
       if (!status) {
-        console.warn("[autofill] Could not retrieve verification code — failing application");
+        console.warn(
+          "[autofill] Could not retrieve verification code — failing application",
+        );
         return "failed";
       }
-      fields = await extractApplicationForm(page);
-      const verifyInstructions = await adapter.planVerification(fields, code, postFillMarkdown, config);
+      fields = await extractForm(page);
+      const verifyInstructions = await adapter.planVerification(
+        fields,
+        code,
+        postFillMarkdown,
+        config,
+      );
       if (verifyInstructions.length > 0) {
         await writeFile(
           join(DEBUG_DIR, `page${pageNum}_${jdId}_verification.json`),
@@ -111,7 +158,7 @@ export async function runAutofillSession(
         return "stuck";
       }
 
-      fields = await extractApplicationForm(page);
+      fields = await extractForm(page);
       const revised = await adapter.revise(
         failed,
         fields,
@@ -125,15 +172,12 @@ export async function runAutofillSession(
           JSON.stringify(revised, null, 2),
           "utf-8",
         );
+        const preReviseHtml = await page.locator(scopeSelector).first().innerHTML();
         failed = await executeAutofill(page, fields, revised);
-
-        await page
-          .waitForLoadState("domcontentloaded", { timeout: 8000 })
-          .catch(() => {});
-        await page.waitForTimeout(800);
+        await waitForContentChange(page, preReviseHtml, scopeSelector);
       }
 
-      const postReviseMarkdown = await extractPageMarkdown(page);
+      const postReviseMarkdown = await extractPageMarkdown(page, scopeSelector);
       const reviseStatus = await adapter.checkPageStatus(
         postFillMarkdown,
         postReviseMarkdown,
@@ -151,9 +195,7 @@ export async function runAutofillSession(
     }
 
     if (failed.length > 0) {
-      console.warn(
-        `[autofill] ${failed.length} instruction(s) still failing:`,
-      );
+      console.warn(`[autofill] ${failed.length} instruction(s) still failing:`);
       failed.forEach((f) =>
         console.warn(`  • ${f.instruction.key}: ${f.reason}`),
       );

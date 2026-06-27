@@ -27,7 +27,11 @@ async function callWithJsonRetry<T>(fn: () => Promise<T>): Promise<T> {
       return await fn();
     } catch (e) {
       lastError = e;
-      console.warn(`[anthropic] Attempt ${attempt}/${MAX_ATTEMPTS} returned non-JSON, retrying...`);
+      if (attempt < MAX_ATTEMPTS) {
+        console.warn(`[anthropic] Attempt ${attempt}/${MAX_ATTEMPTS} returned non-JSON, retrying...`);
+      } else {
+        console.warn(`[anthropic] Attempt ${attempt}/${MAX_ATTEMPTS} returned non-JSON, giving up.`);
+      }
     }
   }
   throw lastError;

@@ -2,6 +2,7 @@ import { join } from "path";
 import { readFileSync } from "fs";
 import type { Page } from "playwright";
 import type { AutofillConfig, AutofillAdapter, CheckStatusConfig } from "./types.js";
+import type { ExtractedApplicationField } from "../application_extraction/extractApplicationForm.js";
 import { runAutofillSession } from "./runner.js";
 
 export type { FillInstruction, FailedInstruction } from "./types.js";
@@ -32,9 +33,11 @@ async function loadAdapter(provider: string): Promise<AutofillAdapter> {
 export async function autofillApplication(
   page: Page,
   jdId: string,
+  extractForm?: (page: Page) => Promise<ExtractedApplicationField[]>,
+  scopeSelector = "body",
 ): Promise<"success" | "stuck" | "failed"> {
   const config = loadConfig();
   const checkStatusConfig = loadCheckStatusConfig();
   const adapter = await loadAdapter(config.provider);
-  return runAutofillSession(page, jdId, config, checkStatusConfig, adapter);
+  return runAutofillSession(page, jdId, config, checkStatusConfig, adapter, extractForm, scopeSelector);
 }
